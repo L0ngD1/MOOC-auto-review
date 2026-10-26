@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         MOOC互评填表助手
 // @namespace    local.mooc.review
-// @version      1.0.0
-// @description  自动选择5分、取消答题者可见、点评填好；手动提交
+// @version      1.1.0
+// @description  自动选择各评分项最高分、取消答题者可见、点评填好；手动提交
 // @match        https://www.icourse163.org/learn/*
 // @run-at       document-idle
 // @grant        none
@@ -46,6 +46,24 @@
   function available(el) {
     return !el.disabled && !el.readOnly && el.getClientRects().length > 0;
   }
+  // 每个单选组分别比较数值，不依赖选项排列顺序。
+  function highestRadios(area) {
+    const groups = new Map();
+    for (const radio of area.querySelectorAll('input.j-select[type="radio"]')) {
+      const key = radio.name || radio.getAttribute('data-jid');
+      if (!key) return []; // 无法确定分组时，等待页面完善，避免误选。
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(radio);
+    }
+    const result = [];
+    for (const group of groups.values()) {
+      const choices = group.filter(available);
+      if (!choices.length) return [];
+      if (choices.some(r => !r.value.trim() || !Number.isFinite(Number(r.value)))) return [];
+      result.push(choices.reduce((best, r) => Number(r.value) > Number(best.value) ? r : best));
+    }
+    return result;
+  }
   function fill() {
     if (!enabled || document.visibilityState !== 'visible' || !document.hasFocus()) return;
     if (!/^#\/learn\/hw(?:\?|$)/.test(location.hash)) {
@@ -55,7 +73,7 @@
     for (const area of document.querySelectorAll('.evaluateArea')) {
       const textarea = area.querySelector('textarea.j-textarea');
       const checkbox = area.querySelector('label.answerVisible input.j-acb[type="checkbox"]');
-      const radios = Array.from(area.querySelectorAll('input.j-select[type="radio"][value="5"]'));
+      const radios = highestRadios(area);
       if (!textarea || !checkbox || !radios.length || !available(textarea) || !available(checkbox) || !radios.every(available)) continue;
       questions++; scores += radios.length;
       if (!completed.has(textarea)) {
@@ -76,3 +94,5 @@
   window.addEventListener('hashchange', fill);
   fill();
 })();
+
+
